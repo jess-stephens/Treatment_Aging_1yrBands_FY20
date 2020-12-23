@@ -1,0 +1,86 @@
+---
+title: "00_Config"
+author: "Jessica Stephens"
+date: "7/21/2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Install Packages
+
+In a previous session, you saw how to install additional packages that are not available on CRAN, like [ICPIutilities](https://github.com/ICPI/ICPIutilities/blob/master/README.md) which is package developed for use with the PEPFAR MSD. It can be installed from GitHub (via the `devtools` package). If you don't have it installed yet, you can run the code below to do so.
+
+#if difficulties can download zip file 
+```{r install_github}
+#install ICPI utilities using devtools
+#install.packages("devtools")
+#library(devtools)
+#devtools::install_github("ICPI/ICPIutilities")
+#devtools::install_github("USAID-OHA-SI/glitr")
+
+```
+
+There are other useful packages to improve your productivity
+
+1. here
+The package here will help you find your files
+#helps find files
+```{r echo=FALSE}
+#install.packages("here")
+```
+
+2. glamr
+This package is a sister package of ICPIutilities for working with data from datim and the MER
+The main function that we will be introducing today is glamr::folder_setup()
+#glitter, visualizations, make it easier to use ggplot with standard themes
+#glamr, useful things like folder set ups
+```{r install_github}
+#devtools::install_github("USAID-OHA-SI/glamr")
+```
+
+
+
+
+## Load Packages
+`janitor` and `dplyr` version >= 1.0.0
+Now we will load the packages we want to use.
+
+```{r load, echo=FALSE}
+#install.packages("janitor")
+#install.packages("tidyverse")
+#install.packages("dplyr") 
+#package dplyr included in Tidyverse, no need to download separately, unless it has its own update
+
+
+```
+
+
+## Load Packages
+Now we will load the packages we want to use.
+
+```{r load, echo=FALSE}
+library(tidyverse)
+library(readxl)
+library(here)
+library(ICPIutilities)
+library(glitr)
+library(glamr)
+library(janitor)
+library(dplyr)
+
+```
+
+## Reset Folders
+
+```{r load, echo=FALSE}
+#check that wd is the project, not a subfolder,etc
+getwd()
+
+#make sure folder set up is complete
+ glamr::folder_setup()
+```

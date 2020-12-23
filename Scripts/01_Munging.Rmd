@@ -1,0 +1,697 @@
+---
+title: "01_Munging" 
+author: "Jessica Stephens"
+date: "10/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Importing Data
+
+data is in a microsoft excel workbook
+readxl
+
+```{r load, echo=FALSE}
+
+#check wd and file path match
+setwd("C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Treatment_Aging_1yrBands_FY20")
+
+#read xlsx - specify path, sheet name to read
+
+df <- read_xlsx("Data/HIV2020Estimates_ART by single year_8Sept2020_norow.xlsx",
+                sheet="DataList") 
+
+
+```
+
+
+## Check Data Import
+
+
+```{r load, echo=FALSE}
+
+glimpse(df)
+View(df)
+
+```
+
+
+
+
+## Clean dataset: Isolate Age from E_Ind and drop unnecessary columns/variables
+
+Goal: the numbers for each one-year age band of people with HIV and of people on ART
+# make a new variable with the the values after "Age" and before ";"
+```{r load, echo=FALSE}
+
+
+
+df_full_seperate <- df %>% 
+    separate(E_Ind, c("A","B", "C", "D", "E"), sep = "([+;])") %>%#"B" holds the age
+    separate(B, c("X", "Y", "Age_num"), sep = "([ ])")%>%
+    separate(A, c("X1", "PLVHIV_or_ART", "X2"), sep = "([-])")%>%
+    separate("PLVHIV_or_ART", c("PLVHIV_or_ART", "Y1"), sep = "([0])") %>% #drop 0 from PLHIV vs ART
+    rename(Country=E_Count, sex=D, sex2=E)  %>%#rename country variable and vars with sex
+    mutate(malefemale=ifelse(is.na(sex2), 0, 1)) %>%
+    mutate(sex=ifelse(malefemale==1, "MaleFemale", sex)) %>% # not working to change sex here %>%
+    mutate(Country=recode(Country, "Cote dIvoire"="Cote d'Ivoire", 
+                          "Lao People Democratic Republic"="Laos",
+                          "United Republic of Tanzania"= "Tanzania",
+                          "Viet Nam"="Vietnam"))%>%
+    select(Country, Age_num, sex, Time, Value) %>% #drop X1, X2, Y, X, C,Y1, sex2 Rounded
+    view() %>%
+    glimpse()
+  
+
+df_full_seperate$Age_num <-
+    as.numeric(as.character(unlist(df_full_seperate$Age_num)))
+
+view(df_full_seperate)
+glimpse(df_full_seperate)
+
+```
+
+
+
+#############################################
+# Restructure data
+##############################################
+
+## add variables for Age Categories for ACTUAL Age
+
+Create categories for PEPFAR age brackets
+<1
+1-4
+5-9
+10-14
+15-19
+20-24
+25-29
+30-34
+35-39
+40-44
+45-49
+50+
+
+
+https://stackoverflow.com/questions/12979456/r-code-to-categorize-age-into-group-bins-breaks 
+
+
+```{r load, echo=FALSE}
+#find max
+range(df_full_seperate$Age_num)
+#0-80
+
+library(data.table)
+
+PEPFARagebreaks19 <- c(0,1,5,10,15,20,25,30,35,40,45,50,85)
+PEPFARagelabels19 <- c("<01","01--04", "05--09","10--14","15-19","20-24","25-29","30-34",
+               "35-39","40-44","45-49","50+")
+
+
+df_full_PEPFARage2019 <- setDT(df_full_seperate) [ , ACTUAL_Age_cat_SemiFine := cut(Age_num, 
+                                breaks = PEPFARagebreaks19, 
+                                right = FALSE, 
+                                labels = PEPFARagelabels19)]
+
+
+view(df_full_PEPFARage2019)
+
+glimpse(df_full_PEPFARage2019)
+
+names(df_full_PEPFARage2019)
+
+```
+
+
+
+
+# Figure out predicted ages 
+#ex, 2017 ages if 2016 aged w/o other loss/gains
+
+
+```{r load, echo=FALSE}
+
+df_full_PREDICTagetime <- df_full_PEPFARage2019 %>%
+ mutate(Age_predict=Age_num+1, Time_predict=Time+1)
+
+view(df_full_PREDICTagetime)
+
+
+
+df_full_PREDICTagegroups <- setDT(df_full_PREDICTagetime) [ , PREDICT_Age_cat_SemiFine := cut(Age_predict, 
+                                breaks = PEPFARagebreaks19, 
+                                right = FALSE, 
+                                labels = PEPFARagelabels19)]
+
+
+view(df_full_PREDICTagegroups)
+glimpse(df_full_PREDICTagegroups)
+#Rows: 119,280
+#Columns: 11
+names(df_full_PREDICTagegroups)
+
+
+
+
+```
+
+
+
+<!-- ############################################################################## -->
+<!-- Multiple possible data formats, see archive for 1 & 2 -->
+<!-- 1) long with disaggregate (<15 no disaggregate) -->
+<!-- 2) long without sex disaggregate -->
+<!-- 3) long with all data (male, female and malefemale) - can be disaggregated later -->
+
+
+
+
+###########################################################
+######    ALL DATA (format 3) ######
+###########################################################
+
+
+Multiple data formats
+1) long with disaggregate
+2) long without sex disaggregate
+3) long with all data (male, female and malefemale) - can be disaggregated later
+
+
+## Group by Age Groups and Country and sex
+#actual and predicted separately
+#merge actual and predicted
+
+```{r load, echo=FALSE}
+
+#insert the df_long_sexdisagg
+
+#actual
+df_long_Grouped_Actual_SemiFine_disagg<- df_full_PREDICTagegroups %>%
+  group_by(Country, sex, Time, ACTUAL_Age_cat_SemiFine) %>%
+  summarise(Total_Value_Actual=sum(Value))
+
+glimpse(df_long_Grouped_Actual_SemiFine_disagg)
+view(df_long_Grouped_Actual_SemiFine_disagg)
+
+#predict
+df_long_Grouped_Predict_SemiFine_disagg<- df_full_PREDICTagegroups %>%
+  group_by(Country, sex, Time_predict, PREDICT_Age_cat_SemiFine) %>%
+  summarise(Total_Value_Predict=sum(Value))
+
+glimpse(df_long_Grouped_Predict_SemiFine_disagg)
+view(df_long_Grouped_Predict_SemiFine_disagg)
+
+
+#rename predict variables to match actual so they can merge
+df_long_Grouped_Predict_SemiFine_vars_disagg<- df_long_Grouped_Predict_SemiFine_disagg %>%
+  rename(Time=Time_predict, ACTUAL_Age_cat_SemiFine=PREDICT_Age_cat_SemiFine)
+
+glimpse(df_long_Grouped_Predict_SemiFine_vars_disagg)
+view(df_long_Grouped_Predict_SemiFine_vars_disagg)
+
+#merge back together
+df_long_Grouped_SemiFine_disagg <- df_long_Grouped_Actual_SemiFine_disagg %>% 
+  left_join(df_long_Grouped_Predict_SemiFine_vars_disagg, by=c("Time"="Time", "ACTUAL_Age_cat_SemiFine"="ACTUAL_Age_cat_SemiFine","Country"="Country", "sex"="sex"))
+
+view(df_long_Grouped_SemiFine_disagg)
+# 
+# write_csv(df_long_Grouped_SemiFine_disagg,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_long_grouped_20200914.csv", na="")
+
+
+
+```
+
+
+
+
+
+
+## look at difference between actual ages - aging in/out actual loss or growth 
+#ex actual 2019 / actual 2018
+
+##calc predicted % difference
+#predicted 2019/actual 2018
+
+##Compare actual to predicted - expected impact based on aging
+
+
+```{r load, echo=FALSE}
+
+## BK's solution
+## Note: Make sure to install `janitor` and `dplyr` version >= 1.0.0
+## This version calculates the perc for all years
+df_perc_disagg<- df_long_Grouped_SemiFine_disagg %>%
+  janitor::clean_names() %>% 
+  arrange( actual_age_cat_semi_fine) %>% #making year values sequential 
+  group_by(country, actual_age_cat_semi_fine) %>% #dont want to confuse the countries or hiv/art obs - keep lag/lead in these groups
+  mutate( total_prev_value_actual = lag(total_value_actual),
+    
+    perc_diff = ifelse(
+    !is.na(total_value_actual) & !is.na(total_prev_value_actual), #ignore the values that are empty (na)
+    total_value_actual / total_prev_value_actual*100, 
+    NA
+    ),
+    
+    perc_of_lastyr = ifelse(
+      !is.na(total_value_predict) & !is.na(lag(total_value_actual)),
+      total_value_predict / total_prev_value_actual * 100,
+      NA
+#  ),
+ #       perc_diff_Compare2= (perc_diff/perc_of_lastyr)*100
+ )) %>% 
+  ungroup() %>% 
+  relocate(total_prev_value_actual, .after = total_value_actual)
+  
+View(df_perc_disagg)
+  
+
+
+  
+
+```
+
+
+
+#filter ART, time and select relevant variables
+
+
+
+```{r load, echo=FALSE}
+spectrum_clean_all_disagg<-df_perc_disagg%>%
+  filter(time %in% c('2019')) %>%
+  select(country, time, sex, actual_age_cat_semi_fine, perc_of_lastyr)%>%
+  rename(year=time, age_group=actual_age_cat_semi_fine)%>%
+  mutate_if(is.factor, as.character)%>%
+  mutate(sex=ifelse(sex==" Female", "Female", sex)) %>%
+  mutate(sex=ifelse(sex==" Male", "Male", sex)) %>%
+  glimpse()
+
+view(spectrum_clean_all_disagg)
+glimpse(spectrum_clean_all_disagg)
+
+
+write_csv(spectrum_clean_all_disagg,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/spectrum_clean_all_total_20201123_FY20.csv", na="")
+
+```
+
+
+
+
+
+
+
+#################################   ARCHIVE CODE ##############################
+
+<!-- ## Start with long non-disaggregated because it has all age groups "MaleFemale" -->
+
+<!-- #### SKIP BELOW FOR SEX DISAGGREGATE DATA OR ALL THE WAY TO BOTTOM TOTAL DATASET (MALEFEMALE, MALE, FEMALE) -->
+
+
+<!-- ########################################################### -->
+<!-- ######    NO DISAGGREGATE (format 1) ###### -->
+<!-- ########################################################### -->
+
+<!-- ```{r load, echo=FALSE} -->
+
+<!-- #2 -->
+<!--   #drop the malefemale==0 and sex -->
+
+<!-- df_long_total <- df_full_PREDICTagegroups %>% -->
+<!--     subset(sex="MaleFemale") %>% -->
+<!--     select(!sex) %>% -->
+<!--     glimpse() -->
+
+
+<!-- # df_long_total <- df_full_PREDICTagegroups %>% -->
+<!-- #     subset(malefemale==1) %>% -->
+<!-- #     select(!malefemale) %>% -->
+<!-- #     select(!sex) %>% -->
+<!-- #     glimpse() -->
+<!-- #    -->
+<!-- view(df_long_total) -->
+<!-- glimpse(df_long_total) -->
+
+<!-- #Rows: 45,360 -->
+<!-- #Columns: 9 -->
+<!-- #  -->
+<!-- # write_csv(df_long_total,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_long_20200914.csv", na="") -->
+<!-- ``` -->
+
+
+
+<!-- ## Group by Age Groups and Country  -->
+<!-- #actual and predicted separately -->
+<!-- #merge actual and predicted -->
+
+<!-- ```{r load, echo=FALSE} -->
+
+<!-- #insert the df_long_total -->
+
+<!-- #actual -->
+<!-- df_long_Grouped_Actual_SemiFine<- df_long_total %>% -->
+<!--   group_by(Country, Time, ACTUAL_Age_cat_SemiFine) %>% -->
+<!--   summarise(Total_Value_Actual=sum(Value)) -->
+
+<!-- glimpse(df_long_Grouped_Actual_SemiFine) -->
+<!-- view(df_long_Grouped_Actual_SemiFine) -->
+
+<!-- #predict -->
+<!-- df_long_Grouped_Predict_SemiFine<- df_long_total %>% -->
+<!--   group_by(Country, Time_predict, PREDICT_Age_cat_SemiFine) %>% -->
+<!--   summarise(Total_Value_Predict=sum(Value)) -->
+
+<!-- glimpse(df_long_Grouped_Predict_SemiFine) -->
+<!-- view(df_long_Grouped_Predict_SemiFine) -->
+
+
+<!-- #rename predict variables to match actual so they can merge -->
+<!-- df_long_Grouped_Predict_SemiFine_vars<- df_long_Grouped_Predict_SemiFine %>% -->
+<!--   rename(Time=Time_predict, ACTUAL_Age_cat_SemiFine=PREDICT_Age_cat_SemiFine) -->
+
+<!-- glimpse(df_long_Grouped_Predict_SemiFine_vars) -->
+<!-- view(df_long_Grouped_Predict_SemiFine_vars) -->
+
+<!-- #merge back together -->
+<!-- df_long_Grouped_SemiFine <- df_long_Grouped_Actual_SemiFine %>%  -->
+<!--   left_join(df_long_Grouped_Predict_SemiFine_vars, by=c("Time"="Time", "ACTUAL_Age_cat_SemiFine"="ACTUAL_Age_cat_SemiFine","Country"="Country")) -->
+
+<!-- view(df_long_Grouped_SemiFine) -->
+
+
+
+
+
+<!-- ``` -->
+
+
+
+
+
+
+<!-- ## look at difference between actual ages - aging in/out actual loss or growth  -->
+<!-- #ex actual 2019 / actual 2018 -->
+
+<!-- ##calc predicted % difference -->
+<!-- #predicted 2019/actual 2018 -->
+
+<!-- ##Compare actual to predicted - expected impact based on aging -->
+
+
+<!-- ```{r load, echo=FALSE} -->
+
+<!-- ## BK's solution -->
+<!-- ## Note: Make sure to install `janitor` and `dplyr` version >= 1.0.0 -->
+<!-- ## This version calculates the perc for all years -->
+<!-- df_perc<- df_long_Grouped_SemiFine %>% -->
+<!--   janitor::clean_names() %>%  -->
+<!--   arrange(actual_age_cat_semi_fine) %>% #making year values sequential  -->
+<!--   group_by(country, actual_age_cat_semi_fine) %>% #dont want to confuse the countries or hiv/art obs - keep lag/lead in these groups -->
+<!--   mutate( total_prev_value_actual = lag(total_value_actual), -->
+
+<!--     perc_diff = ifelse( -->
+<!--     !is.na(total_value_actual) & !is.na(total_prev_value_actual), #ignore the values that are empty (na) -->
+<!--     total_value_actual / total_prev_value_actual*100,  -->
+<!--     NA -->
+<!--     ), -->
+
+<!--     perc_of_lastyr = ifelse( -->
+<!--       !is.na(total_value_predict) & !is.na(lag(total_value_actual)), -->
+<!--       total_value_predict / total_prev_value_actual * 100, -->
+<!--       NA -->
+<!-- #  ), -->
+<!--  #       perc_diff_Compare2= (perc_diff/perc_of_lastyr)*100 -->
+<!--  )) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   relocate(total_prev_value_actual, .after = total_value_actual) -->
+
+<!-- View(df_perc) -->
+
+
+
+
+
+<!-- ``` -->
+
+
+
+<!-- #filter ART, time and select relevant variables -->
+
+
+<!-- ```{r load, echo=FALSE} -->
+<!-- spectrum_clean_all<-df_perc%>% -->
+<!--   filter(time %in% c( '2019')) %>% -->
+<!--   select(country, time, actual_age_cat_semi_fine,   perc_of_lastyr)%>% -->
+<!--     rename(year=time, age_group=actual_age_cat_semi_fine)%>% -->
+<!--     mutate_if(is.factor, as.character)%>% -->
+<!--   glimpse() -->
+
+<!-- view(spectrum_clean_all) -->
+<!-- write_csv(spectrum_clean_all,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/spectrum_clean_all_20200916.csv", na="") -->
+
+<!-- ``` -->
+
+
+
+
+
+
+
+
+
+
+<!-- ########################################################### -->
+<!-- ######    SEX DISAGGREGATE (format 2) ###### -->
+<!-- ########################################################### -->
+
+
+<!-- Multiple data formats -->
+<!-- 1) long with disaggregate -->
+<!-- 2) long without sex disaggregate -->
+<!-- 3) long with all data (male, female and malefemale) - can be disaggregated later -->
+<!-- ```{r load, echo=FALSE} -->
+
+
+<!-- #1 -->
+<!--   #drop the malefemale==1 -->
+<!-- df_long_sexdisagg <- df_full_PREDICTagegroups %>% -->
+<!--     subset(sex!=2) %>% -->
+<!--     view() -->
+
+<!-- view(df_long_sexdisagg) -->
+<!-- glimpse(df_long_sexdisagg) -->
+<!-- #Rows: 73,920 -->
+<!-- #Columns: 10 -->
+
+<!-- # write_csv(df_long_sexdisagg,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_long_sexdisagg_20200914.csv", na="") -->
+
+<!-- ``` -->
+
+
+
+
+
+<!-- ## Group by Age Groups and Country and sex -->
+<!-- #actual and predicted separately -->
+<!-- #merge actual and predicted -->
+
+<!-- ```{r load, echo=FALSE} -->
+
+<!-- #insert the df_long_sexdisagg -->
+
+<!-- #actual -->
+<!-- df_long_Grouped_Actual_SemiFine_disagg<- df_long_sexdisagg %>% -->
+<!--   group_by(Country, sex, Time, ACTUAL_Age_cat_SemiFine) %>% -->
+<!--   summarise(Total_Value_Actual=sum(Value)) -->
+
+<!-- glimpse(df_long_Grouped_Actual_SemiFine_disagg) -->
+<!-- view(df_long_Grouped_Actual_SemiFine_disagg) -->
+
+<!-- #predict -->
+<!-- df_long_Grouped_Predict_SemiFine_disagg<- df_long_sexdisagg %>% -->
+<!--   group_by(Country, sex, Time_predict, PREDICT_Age_cat_SemiFine) %>% -->
+<!--   summarise(Total_Value_Predict=sum(Value)) -->
+
+<!-- glimpse(df_long_Grouped_Predict_SemiFine_disagg) -->
+<!-- view(df_long_Grouped_Predict_SemiFine_disagg) -->
+
+
+<!-- #rename predict variables to match actual so they can merge -->
+<!-- df_long_Grouped_Predict_SemiFine_vars_disagg<- df_long_Grouped_Predict_SemiFine_disagg %>% -->
+<!--   rename(Time=Time_predict, ACTUAL_Age_cat_SemiFine=PREDICT_Age_cat_SemiFine) -->
+
+<!-- glimpse(df_long_Grouped_Predict_SemiFine_vars_disagg) -->
+<!-- view(df_long_Grouped_Predict_SemiFine_vars_disagg) -->
+
+<!-- #merge back together -->
+<!-- df_long_Grouped_SemiFine_disagg <- df_long_Grouped_Actual_SemiFine_disagg %>%  -->
+<!--   left_join(df_long_Grouped_Predict_SemiFine_vars_disagg, by=c("Time"="Time", "ACTUAL_Age_cat_SemiFine"="ACTUAL_Age_cat_SemiFine","Country"="Country", "sex"="sex")) -->
+
+<!-- view(df_long_Grouped_SemiFine_disagg) -->
+
+
+
+
+
+<!-- ``` -->
+
+
+
+
+
+
+<!-- ## look at difference between actual ages - aging in/out actual loss or growth  -->
+<!-- #ex actual 2019 / actual 2018 -->
+
+<!-- ##calc predicted % difference -->
+<!-- #predicted 2019/actual 2018 -->
+
+<!-- ##Compare actual to predicted - expected impact based on aging -->
+
+
+<!-- ```{r load, echo=FALSE} -->
+
+<!-- ## BK's solution -->
+<!-- ## Note: Make sure to install `janitor` and `dplyr` version >= 1.0.0 -->
+<!-- ## This version calculates the perc for all years -->
+<!-- df_perc_disagg<- df_long_Grouped_SemiFine_disagg %>% -->
+<!--   janitor::clean_names() %>%  -->
+<!--   arrange( actual_age_cat_semi_fine) %>% #making year values sequential  -->
+<!--   group_by(country, actual_age_cat_semi_fine) %>% #dont want to confuse the countries or hiv/art obs - keep lag/lead in these groups -->
+<!--   mutate( total_prev_value_actual = lag(total_value_actual), -->
+
+<!--     perc_diff = ifelse( -->
+<!--     !is.na(total_value_actual) & !is.na(total_prev_value_actual), #ignore the values that are empty (na) -->
+<!--     total_value_actual / total_prev_value_actual*100,  -->
+<!--     NA -->
+<!--     ), -->
+
+<!--     perc_of_lastyr = ifelse( -->
+<!--       !is.na(total_value_predict) & !is.na(lag(total_value_actual)), -->
+<!--       total_value_predict / total_prev_value_actual * 100, -->
+<!--       NA -->
+<!-- #  ), -->
+<!--  #       perc_diff_Compare2= (perc_diff/perc_of_lastyr)*100 -->
+<!--  )) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   relocate(total_prev_value_actual, .after = total_value_actual) -->
+
+<!-- View(df_perc_disagg) -->
+
+
+
+
+
+<!-- ``` -->
+
+
+
+<!-- #filter ART, time and select relevant variables -->
+
+
+<!-- ```{r load, echo=FALSE} -->
+<!-- spectrum_clean_disagg<-df_perc_disagg%>% -->
+<!--   filter(time %in% c('2019')) %>% -->
+<!--   select(country, time, sex, actual_age_cat_semi_fine, perc_of_lastyr)%>% -->
+<!--   rename(year=time, age_group=actual_age_cat_semi_fine)%>% -->
+<!--   mutate_if(is.factor, as.character)%>% -->
+<!--   mutate(sex=ifelse(sex==" Female", "Female", "Male")) %>% -->
+<!--   glimpse() -->
+
+<!-- view(spectrum_clean_disagg) -->
+<!-- glimpse(spectrum_clean_disagg) -->
+
+<!-- write_csv(spectrum_clean_disagg,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/spectrum_clean_sexdisagg_20200916.csv", na = "") -->
+
+<!-- ``` -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Aditional Archives
+
+
+<!-- # Figure out predicted ages  -->
+<!-- #ex, 2017 ages if 2016 aged w/o other loss/gains -->
+
+
+<!-- ```{r load, echo=FALSE} -->
+
+
+
+<!-- PREDICTagebreaks <- c(0,4,9,14,19,24,29,34,39,44,49,85) -->
+<!-- PREDICTagelabels <- c("0-3","4-8","9-13","14-18","19-23","24-28","29-33", -->
+<!--                "34-38","39-43","44-48","49+") -->
+
+<!-- PREDICTagebreaks18 <- c(0,9,14,19,24,29,34,39,44,49,85) -->
+<!-- PREDICTagelabels18 <- c("0-8","9-13","14-18","19-23","24-28","29-33", -->
+<!--                "34-38","39-43","44-48","49+") -->
+
+<!-- df_wide_PREDICTagegroupsFINE <- setDT(df_combined_PEPFARagegroups) [ , PREDICT_Age_cat_Fine := cut(Age_num,  -->
+<!--                                 breaks = PREDICTagebreaks,  -->
+<!--                                 right = FALSE,  -->
+<!--                                 labels = PREDICTagelabels)] -->
+<!-- view(df_wide_PREDICTagegroupsFINE) -->
+<!-- glimpse(df_wide_PREDICTagegroupsFINE) -->
+
+<!-- df_wide_PREDICTagegroupsALL <- setDT(df_wide_PREDICTagegroupsFINE) [ , PREDICT_Age_cat_SemiFine := cut(Age_num,  -->
+<!--                                 breaks = PREDICTagebreaks18,  -->
+<!--                                 right = FALSE,  -->
+<!--                                 labels = PREDICTagelabels18)] -->
+<!-- view(df_wide_PREDICTagegroupsALL) -->
+<!-- glimpse(df_wide_PREDICTagegroupsALL) -->
+
+<!-- ``` -->
+
+
+
+<!-- ## Figure out predicted ages  -->
+<!-- #ex, 2017 ages if 2016 aged w/o other loss/gains -->
+
+
+<!-- ```{r load, echo=FALSE} -->
+
+
+<!-- for each year and actual age cat -->
+<!--   do value of previous year and  -->
+
+
+<!-- PRED_Value_2019(ACTUAL_Age_cat_Fine) = ACTUAL_Value_2018 (PRED_age_bands) -->
+
+
+<!-- #loop over age bands -->
+
+<!-- #long -->
+
+<!-- for(i in Value){ -->
+<!--   Pred_Value <- when Time=Time-1 & PRED_Age_cat_SemiFine=0 -->
+
+
+
+<!--  # wide??? -->
+
+<!--   sum(ACTUAL_Value_2018) if PRED_age_bands =  -->
+<!-- } -->
+
+<!-- PRED_Value_2019_1-9  <- ACTUAL_Value_2018_0-8 -->
+
+<!-- PRED_Value_2019_1-9  <- ACTUAL_Value_2018_0-8 -->
+
+
+<!-- ``` -->
+
+
+
