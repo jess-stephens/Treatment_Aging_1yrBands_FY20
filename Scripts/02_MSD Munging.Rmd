@@ -177,15 +177,32 @@ df_calulcated_vars2 <-df_calulcated_vars_total_correction_factor %>%
 
 view(df_calulcated_vars2)
 glimpse(df_calulcated_vars2)
+names(df_calulcated_vars2)
 
-  df_calulcated_vars2 <-df_calulcated_vars2%>% 
-  select(country, age_group, perc_of_lastyr, retention_proxy_pepfar, retention_proxy_aging_adj, retention_proxy_aging_adj_totalcorrection)
+```  
   
-write_csv(df_calulcated_vars2,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_Retention_20201123_FY20.csv", na="")
+  [1] "country"                                         "age_group"                                      
+ [3] "perc_of_lastyr"                                  "TX_CURR_2019"                                   
+ [5] "TX_CURR_2020"                                    "TX_NEW_2020"                                    
+ [7] "TX_CURR_2020_aging_adj_baseline"                 "TX_CURR_2020_aging_adj_final"                   
+ [9] "retention_proxy_aging_adj"                       "retention_proxy_pepfar"                         
+[11] "retention_highest"                               "total_correction_factor"                        
+[13] "TX_CURR_2020_aging_adj_baseline_totalcorrection" "TX_CURR_2020_aging_adj_final_totalcorrection"   
+[15] "retention_proxy_aging_adj_totalcorrection"       "retention_highest_totalcorrection"  
+
+
+#rename df to append and export
+```  
+df_spectrum_retention_NoSexDisagg<-  df_calulcated_vars2  %>% 
+mutate("sex" = "Total") 
+glimpse(df_spectrum_retention_NoSexDisagg)
+names(df_spectrum_retention_NoSexDisagg )
+  
+write_csv(df_spectrum_retention_NoSexDisagg,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_Retention_20201223_FY20_all vars.csv", na="")
+```  
 
 
 
-```
 
 
 
@@ -328,8 +345,8 @@ view()
         
 
 
-#calcuate total adjusted var
-df_calulcated_vars2 <-df_calulcated_vars_total_correction_factor %>% 
+#calculate total adjusted var
+df_calulcated_vars2_ <-df_calulcated_vars_total_correction_factor %>% 
   rowwise() %>% 
   mutate(
         TX_CURR_2020_aging_adj_baseline_totalcorrection=round((TX_CURR_2019 * (perc_of_lastyr/100))*(total_correction_factor)), 
@@ -338,20 +355,23 @@ df_calulcated_vars2 <-df_calulcated_vars_total_correction_factor %>%
          retention_proxy_aging_adj_totalcorrection=((TX_CURR_2020/TX_CURR_2020_aging_adj_final_totalcorrection)*100),###redone
          retention_highest_totalcorrection=(ifelse((100-retention_proxy_aging_adj_totalcorrection) < (100-retention_proxy_pepfar),"Aging Adjusted Proxy", "PEPFAR Proxy")))
 
+view(df_calulcated_vars2_)
+glimpse(df_calulcated_vars2_)
+names(df_calulcated_vars2_)
+```
+ [1] "country"                                         "sex"                                            
+ [3] "age_group"                                       "perc_of_lastyr"                                 
+ [5] "TX_CURR_2019"                                    "TX_CURR_2020"                                   
+ [7] "TX_NEW_2020"                                     "TX_CURR_2020_aging_adj_baseline"                
+ [9] "TX_CURR_2020_aging_adj_final"                    "retention_proxy_aging_adj"                      
+[11] "retention_proxy_pepfar"                          "retention_highest"                              
+[13] "total_correction_factor"                         "TX_CURR_2020_aging_adj_baseline_totalcorrection"
+[15] "TX_CURR_2020_aging_adj_final_totalcorrection"    "retention_proxy_aging_adj_totalcorrection"      
+[17] "retention_highest_totalcorrection"      
 
 
-
-view(df_calulcated_vars2)
-glimpse(df_calulcated_vars2)
-  
-  df_calulcated_vars2 <-df_calulcated_vars2%>% 
-  select(country, age_group, sex, perc_of_lastyr, retention_proxy_pepfar, retention_proxy_aging_adj, retention_proxy_aging_adj_totalcorrection)
-
-write_csv(df_calulcated_vars2,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_Retention_disagg_20201022_FY20DRAFT.csv", na="")
-
-#write.csv(df_calulcated_vars,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_Retention_20200911.csv", row.names = FALSE)
-
-
+```
+write_csv(df_calulcated_vars2,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_Retention_disagg_20201223_FY20_allvars.csv", na="")
 
 ```
 
@@ -362,6 +382,41 @@ write_csv(df_calulcated_vars2,"C:/Users/jesse/OneDrive/Documents/Work Material/U
 
 
 
+####################### FINAL   #######################
+
+############## Append Sex disagg with non sex disagg  ################
+
+
+
+
+```{r load, echo=FALSE}
+names(df_calulcated_vars2_)
+names(df_spectrum_retention_NoSexDisagg)
+
+df_combo<-bind_rows(df_calulcated_vars2_, df_spectrum_retention_NoSexDisagg)
+glimpse(df_combo)
+view(df_combo)
+
+  df_combo_7vars <-df_combo%>% 
+  select(country, age_group, sex, perc_of_lastyr, retention_proxy_pepfar, retention_proxy_aging_adj, retention_proxy_aging_adj_totalcorrection)
+  
+  %>%
+  rename("Country"="country", "Age Band (Age Group)"="age_group", "Aging Adjustment Factor (Perc Of Lastyr)"="perc_of_lastyr", 
+        "standard PEPFAR retention proxy (retention proxy pepfar)"= "retention_proxy_pepfar", "Aging-Corrected Retention Proxy (Retention Proxy Aging Adj)"="retention_proxy_aging_adj","Retention Proxy Aging Adj Totalcorrection"="retention_proxy_aging_adj_totalcorrection")
+glimpse(df_combo_7vars)
+
+write_csv(df_combo_7vars,"C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Data/Output/Spectrum_Retention_all_20201223_FY20_7vars.csv", na="")
+
+
+
+```
+$ country   
+$ sex
+$ age_group                                 
+$ perc_of_lastyr                           
+$ retention_proxy_pepfar                     
+$ retention_proxy_aging_adj                 
+$ retention_proxy_aging_adj_totalcorrection 
 
 
 
