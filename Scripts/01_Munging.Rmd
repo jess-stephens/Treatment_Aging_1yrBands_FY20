@@ -18,7 +18,7 @@ readxl
 ```{r load, echo=FALSE}
 
 #check wd and file path match
-setwd("C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment/Treatment_Aging_1yrBands_FY20")
+setwd("C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment")
 
 #read xlsx - specify path, sheet name to read
 
