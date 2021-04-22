@@ -4,7 +4,7 @@ author: "Jessica Stephens"
 date: "7/21/2020"
 output: html_document
 ---
-
+add line to test security
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -18,10 +18,10 @@ In a previous session, you saw how to install additional packages that are not a
 #if difficulties can download zip file 
 ```{r install_github}
 #install ICPI utilities using devtools
-#install.packages("devtools")
-#library(devtools)
-#devtools::install_github("ICPI/ICPIutilities")
-#devtools::install_github("USAID-OHA-SI/glitr")
+install.packages("devtools")
+library(devtools)
+devtools::install_github("ICPI/ICPIutilities")
+devtools::install_github("USAID-OHA-SI/glitr")
 
 ```
 
@@ -31,7 +31,7 @@ There are other useful packages to improve your productivity
 The package here will help you find your files
 #helps find files
 ```{r echo=FALSE}
-#install.packages("here")
+install.packages("here")
 ```
 
 2. glamr
