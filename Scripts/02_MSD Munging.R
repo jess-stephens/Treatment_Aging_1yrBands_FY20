@@ -1,0 +1,319 @@
+---
+  title: "02_MSD Munging"
+author: "Jessica Stephens"
+date: "8/17/2020"
+output: html_document
+---
+
+
+#this analysis is separately completed for data disaggregated by sex and non-disaggregated data
+
+
+###################### INPORT AND MUNGE MSD #############################
+
+
+## Merge Tx_Curr and TX_new
+## Downloaded from Panorama, MSD OU by IM for 20XX 
+#currently the imported dataset is 2019 (remnant from previous FY analyses). Once 2020 is available, this code should work with the age disaggregates are based on the 2020 data
+
+msd <- read_msd("C:/Users/jStephens/Documents/Treatment/Aging/Data/Input/MER_Structured_Datasets_OU_IM_FY19-21_20210319_v2_1.txt", save_rds=FALSE)
+glimpse(msd)
+
+spectrum_clean_all_disagg <- read_csv("C:/Users/jStephens/Documents/Treatment/Aging/Data/Output/spectrum_clean_all_total_20201123_FY20.csv")
+glimpse(spectrum_clean_all_disagg)
+
+
+####################### ROUND 1 (DO NOT INCLUDE SEX, USING TOTALS) #######################
+
+############## MUNGE MSD################
+
+
+msd_format <-
+  msd %>%
+  filter(
+    indicator %in% c("TX_CURR", "TX_NEW"),
+    fiscal_year %in% c('2019', '2020'),
+    ageasentered!="Retired Age Band",
+    ageasentered!="Coarse",
+    ageasentered!="Unknown Age",
+    ageasentered!="01-09",
+    ageasentered!="40-49",
+    fundingagency=="USAID",
+    standardizeddisaggregate %in% c("Age/Sex/HIVStatus")) %>% 
+  rename(countryname =countrynamename)%>%
+  select(countryname, indicator, ageasentered, fiscal_year, cumulative, sex) %>%
+  arrange(countryname,indicator, ageasentered, fiscal_year)  %>%
+  group_by(countryname,indicator, ageasentered, fiscal_year) %>%
+  summarize(
+    cumulative=sum(cumulative,na.rm=TRUE)) %>%
+  view()
+view(msd_format)
+
+
+
+
+#long to wide so that tx_Curr and TX_new are on same row for country and year and age
+#change var names so mergable with spectrum data
+
+
+msd_format_wide <- msd_format %>%
+  #long to wide so that tx_Curr and TX_new are on same row for country and year and age
+  spread(indicator, cumulative) %>%
+  rename(country=countryname, year=fiscal_year, age_group=ageasentered)%>%  
+  pivot_wider(
+    names_from=year,
+    names_glue="{.value}_{year}",
+    values_from=c(TX_CURR, TX_NEW)
+  )  %>%
+  #change var names so mergable with spectrum data
+  mutate_if(~ is.integer(.), as.double)%>%
+  mutate(age_group=recode(age_group, "<1"="<01",
+                          "01-04"="01--04",
+                          "05-09"="05--09",
+                          "10-14"="10--14")) %>%
+  select(!TX_NEW_2019)%>%
+  glimpse()
+
+View(msd_format_wide)
+glimpse(msd_format_wide)
+
+
+
+
+
+
+
+#######################  merge with spectrum data #######################  
+### MERGE WITH SPECTRUM DATA FORMAT 3 - SEX DISAGGREAGATED 
+#### file from 01_Munging
+
+# glimpse(spectrum_clean_all)
+spectrum_clean_all <- spectrum_clean_all_disagg %>%
+  subset(sex=="MaleFemale") %>%
+  select(!sex) %>%
+  view()%>%
+  glimpse()
+df_msd_spectrum <-spectrum_clean_all  %>% 
+  left_join(msd_format_wide, by=c("country"="country", "age_group"="age_group"), `copy` = TRUE)  %>% 
+  select(!year)
+view(df_msd_spectrum)
+
+
+
+#calclated variables
+
+
+df_calulcated_vars <-df_msd_spectrum %>% 
+  rowwise() %>% 
+  mutate(
+    ## Calc predicted remaining in 2020
+    # prev year tx_curr*prediction % difference
+    TX_CURR_2020_aging_adj_baseline=round(TX_CURR_2019 * (perc_of_lastyr/100) ),
+    ##Calc Expected FY20 CURR accounting for aging in/out
+    #current FY tx_new*predicted remaning in 20 (last calculation)
+    TX_CURR_2020_aging_adj_final=round(sum(TX_CURR_2020_aging_adj_baseline, 
+                                           TX_NEW_2020, na.rm = TRUE)),
+    retention_proxy_aging_adj=((TX_CURR_2020/TX_CURR_2020_aging_adj_final)*100),###redone
+    retention_proxy_pepfar=((TX_CURR_2020/(TX_CURR_2019+TX_NEW_2020))*100), #redone
+    retention_highest=(ifelse((100-retention_proxy_aging_adj) < (100-retention_proxy_pepfar),"Aging Adjusted Proxy", "PEPFAR Proxy")))
+####TOTAL ADJUSTED
+df_total_correction_factor <-df_calulcated_vars %>% 
+  group_by(country) %>%
+  summarise(TX_CURR_2020_aging_adj_baseline_OUsum=sum(TX_CURR_2020_aging_adj_baseline, na.rm = TRUE), 
+            TX_CURR_2019_OUsum=sum(TX_CURR_2019, na.rm = TRUE))%>% 
+  rowwise() %>%
+  mutate(total_correction_factor=TX_CURR_2019_OUsum/TX_CURR_2020_aging_adj_baseline_OUsum ) %>%
+  select(country, total_correction_factor)%>%
+  view()
+#merge dataset with total_correction_factor to rowwise dataset
+df_calulcated_vars_total_correction_factor <-df_calulcated_vars  %>% 
+  left_join(df_total_correction_factor, by=c("country"="country"), `copy` = TRUE)  %>% 
+  view()
+
+#calcuate total adjusted var
+df_calulcated_vars2 <-df_calulcated_vars_total_correction_factor %>% 
+  rowwise() %>% 
+  mutate(
+    TX_CURR_2020_aging_adj_baseline_totalcorrection=round((TX_CURR_2019 * (perc_of_lastyr/100))*(total_correction_factor)), 
+    TX_CURR_2020_aging_adj_final_totalcorrection=round(sum(TX_CURR_2020_aging_adj_baseline_totalcorrection,
+                                                           TX_NEW_2020, na.rm = TRUE)),
+    retention_proxy_aging_adj_totalcorrection=((TX_CURR_2020/TX_CURR_2020_aging_adj_final_totalcorrection)*100),###redone
+    retention_highest_totalcorrection=(ifelse((100-retention_proxy_aging_adj_totalcorrection) < (100-retention_proxy_pepfar),"Aging Adjusted Proxy", "PEPFAR Proxy")))
+view(df_calulcated_vars2)
+glimpse(df_calulcated_vars2)
+names(df_calulcated_vars2)
+
+#rename df to append and export
+df_spectrum_retention_NoSexDisagg<-  df_calulcated_vars2  %>% 
+  mutate("sex" = "Total") 
+glimpse(df_spectrum_retention_NoSexDisagg)
+names(df_spectrum_retention_NoSexDisagg )
+
+write_csv(df_spectrum_retention_NoSexDisagg,"C:/Users/jStephens/Documents/Treatment/Aging/Data/Output/Spectrum_Retention_20210506_FY20_all vars_USAIDonly.csv", na="")
+
+
+
+
+
+
+
+####################### ROUND 2 (TO INCLUDE SEX)  #######################
+
+############## MUNGE MSD  ################
+
+
+
+msd_format <-
+  msd %>%
+  filter(
+    indicator %in% c("TX_CURR", "TX_NEW"),
+    fiscal_year %in% c('2019', '2020'),
+    ageasentered!="Retired Age Band",
+    ageasentered!="Coarse",
+    ageasentered!="Unknown Age",
+    ageasentered!="01-09",
+    ageasentered!="40-49",
+    standardizeddisaggregate== "Age/Sex/HIVStatus", 
+    fundingagency=="USAID",
+    sex!="Unknown Sex") %>% 
+  select(countryname, indicator, ageasentered, fiscal_year, cumulative, sex) %>%
+  arrange(countryname,indicator, ageasentered, fiscal_year, sex)  %>%
+  #  view()
+  group_by(countryname,indicator, ageasentered, fiscal_year, sex) %>%
+  summarize(
+    cumulative=sum(cumulative,na.rm=TRUE)) %>%  
+  #   n=n()) #will show how many rows in grouping --- also can use count() function alone instead of summ with n=n()
+  view()
+view(msd_format)
+glimpse(msd_format)
+#  gather(key="cum", value="total", -c(1:4)) %>%
+#  gather(key="cum", value="total", -operatingunit,-indicator, -trendsfine, -fiscal_year) %>%
+
+
+
+
+
+#long to wide so that tx_Curr and TX_new are on same row for country and year and age
+#change var names so mergable with spectrum data
+
+
+msd_format_wide <- msd_format %>%
+  #long to wide so that tx_Curr and TX_new are on same row for country and year and age
+  spread(indicator, cumulative) %>%
+  rename(country=countryname, year=fiscal_year, age_group=ageasentered)%>%  
+  pivot_wider(
+    names_from=year,
+    names_glue="{.value}_{year}",
+    values_from=c(TX_CURR, TX_NEW)
+  )  %>%
+  #change var names so mergable with spectrum data
+  mutate_if(~ is.integer(.), as.double)%>%
+  mutate(age_group=recode(age_group, "<1"="<01",
+                          "01-04"="01--04",
+                          "05-09"="05--09",
+                          "10-14"="10--14")) %>%
+  select(!TX_NEW_2019)%>%
+  glimpse()
+
+View(msd_format_wide)
+glimpse(msd_format_wide)
+
+
+
+
+#######################  merge with spectrum data #######################  
+
+### MERGE WITH SPECTRUM DATA FORMAT 3 - SEX DISAGGREAGATED 
+#### file from 01_Munging
+
+
+glimpse(spectrum_clean_all)
+spectrum_clean_disag <- spectrum_clean_all_disagg %>%
+  subset(sex!="MaleFemale") %>%
+  view()
+df_msd_spectrum <-spectrum_clean_disag  %>% 
+  left_join(msd_format_wide, by=c("country"="country", "age_group"="age_group", "sex"="sex"), `copy` = TRUE)  %>% 
+  select(!year)
+view(df_msd_spectrum)
+
+
+#calclated variables
+
+
+df_calulcated_vars <-df_msd_spectrum %>% 
+  rowwise() %>% 
+  mutate(
+    ## Calc predicted remaining in 2020
+    # prev year tx_curr*prediction % difference
+    TX_CURR_2020_aging_adj_baseline=round(TX_CURR_2019*(perc_of_lastyr/100)),
+    ##Calc Expected FY20 CURR accounting for aging in/out
+    #current FY tx_new*predicted remaning in 2020 (last calculation)
+    TX_CURR_2020_aging_adj_final=round(sum(TX_CURR_2020_aging_adj_baseline,
+                                           TX_NEW_2020, na.rm=TRUE)),
+    retention_proxy_aging_adj=((TX_CURR_2020/TX_CURR_2020_aging_adj_final)*100),###redone
+    retention_proxy_pepfar=((TX_CURR_2020/(TX_CURR_2019+TX_NEW_2020))*100), #redone
+    retention_highest=(ifelse((100-retention_proxy_aging_adj) < (100-retention_proxy_pepfar),"Aging Adjusted Proxy", "PEPFAR Proxy")))
+####TOTAL ADJUSTED - 
+##### done in order to maintain overall same TX from previous year, no other loss or gain. artificial loss/gain created with aging correction factor due to different weight of the age bands
+df_total_correction_factor <-df_calulcated_vars %>% 
+  group_by(country,sex) %>%
+  summarise(TX_CURR_2020_aging_adj_baseline_OUsum=sum(TX_CURR_2020_aging_adj_baseline, na.rm = TRUE), 
+            TX_CURR_2019_OUsum=sum(TX_CURR_2019, na.rm = TRUE))%>% 
+  rowwise() %>%
+  mutate(total_correction_factor=TX_CURR_2019_OUsum/TX_CURR_2020_aging_adj_baseline_OUsum ) %>%
+  select(country, sex, total_correction_factor)%>%
+  view()
+#merge dataset with total_correction_factor to rowwise dataset
+df_calulcated_vars_total_correction_factor <-df_calulcated_vars  %>% 
+  left_join(df_total_correction_factor, by=c("country"="country", "sex"="sex"), `copy` = TRUE)  %>% 
+  view()
+
+#calculate total adjusted var
+df_calulcated_vars2_ <-df_calulcated_vars_total_correction_factor %>% 
+  rowwise() %>% 
+  mutate(
+    TX_CURR_2020_aging_adj_baseline_totalcorrection=round((TX_CURR_2019 * (perc_of_lastyr/100))*(total_correction_factor)), 
+    TX_CURR_2020_aging_adj_final_totalcorrection=round(sum(TX_CURR_2020_aging_adj_baseline_totalcorrection,
+                                                           TX_NEW_2020, na.rm = TRUE)),
+    retention_proxy_aging_adj_totalcorrection=((TX_CURR_2020/TX_CURR_2020_aging_adj_final_totalcorrection)*100),###redone
+    retention_highest_totalcorrection=(ifelse((100-retention_proxy_aging_adj_totalcorrection) < (100-retention_proxy_pepfar),"Aging Adjusted Proxy", "PEPFAR Proxy")))
+view(df_calulcated_vars2_)
+glimpse(df_calulcated_vars2_)
+names(df_calulcated_vars2_)
+
+write_csv(df_calulcated_vars2,"C:/Users/jStephens/Documents/Treatment/Aging/Data/Output/Spectrum_Retention_disagg_20210506_FY20_allvars_USAIDonly.csv", na="")
+
+
+
+
+
+
+
+
+####################### FINAL   #######################
+
+############## Append Sex disagg with non sex disagg  ################
+
+
+
+
+names(df_calulcated_vars2_)
+names(df_spectrum_retention_NoSexDisagg)
+df_combo<-bind_rows(df_calulcated_vars2_, df_spectrum_retention_NoSexDisagg)
+glimpse(df_combo)
+view(df_combo)
+df_combo_7vars <-df_combo%>% 
+  select(country, age_group, sex, perc_of_lastyr, retention_proxy_pepfar, retention_proxy_aging_adj, retention_proxy_aging_adj_totalcorrection)%>%
+  rename("Country"="country", "Age Band (Age Group)"="age_group", "Aging Adjustment Factor (Perc Of Lastyr)"="perc_of_lastyr", 
+         "standard PEPFAR retention proxy (retention proxy pepfar)"= "retention_proxy_pepfar", "Aging-Corrected Retention Proxy (Retention Proxy Aging Adj)"="retention_proxy_aging_adj","Retention Proxy Aging Adj Totalcorrection"="retention_proxy_aging_adj_totalcorrection")
+glimpse(df_combo_7vars)
+view(df_combo_7vars)
+write_csv(df_combo_7vars,"C:/Users/jStephens/Documents/Treatment/Aging/Data/Output/Spectrum_Retention_all_20210506_FY20_7vars_USAIDonly.csv", na="")
+
+# $ country   
+# $ sex
+# $ age_group                                 
+# $ perc_of_lastyr                           
+# $ retention_proxy_pepfar                     
+# $ retention_proxy_aging_adj                 
+# $ retention_proxy_aging_adj_totalcorrection 

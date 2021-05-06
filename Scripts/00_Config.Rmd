@@ -4,9 +4,7 @@ author: "Jessica Stephens"
 date: "7/21/2020"
 output: html_document
 ---
-add line to test security
-test 2
-hello git hub
+
 
 
 ```{r setup, include=FALSE}
@@ -43,7 +41,7 @@ The main function that we will be introducing today is glamr::folder_setup()
 #glitter, visualizations, make it easier to use ggplot with standard themes
 #glamr, useful things like folder set ups
 ```{r install_github}
-#devtools::install_github("USAID-OHA-SI/glamr")
+devtools::install_github("USAID-OHA-SI/glamr")
 ```
 
 
@@ -82,7 +80,9 @@ library(dplyr)
 
 ```{r load, echo=FALSE}
 #check that wd is the project, not a subfolder,etc
+knitr::opts_chunk$set(echo = TRUE)
 getwd()
+setwd("C:/Users/jStephens/Documents/GitHub/Treatment_Aging_1yrBands_FY20")
 
 #make sure folder set up is complete
  glamr::folder_setup()

@@ -18,13 +18,18 @@ readxl
 ```{r load, echo=FALSE}
 
 #check wd and file path match
-setwd("C:/Users/jesse/OneDrive/Documents/Work Material/USAID/Treatment")
+setwd("C:/Users/jStephens/Documents/GitHub/Treatment_Aging_1yrBands_FY20")
 
 #read xlsx - specify path, sheet name to read
-
 df <- read_xlsx("Data/HIV2020Estimates_ART by single year_8Sept2020_norow.xlsx",
                 sheet="DataList") 
 
+
+df <- read_xlsx("C:/Users/jStephens/Documents/Treatment/Aging/Data/Input/HIV2020Estimates_ART by single year_8Sept2020_norow.xlsx",
+                sheet="DataList") 
+# library(readxl)
+# HIV2020Estimates_ART_by_single_year_8Sept2020_norow <- read_excel("Data/HIV2020Estimates_ART by single year_8Sept2020_norow.xlsx")
+# View(HIV2020Estimates_ART_by_single_year_8Sept2020_norow)
 
 ```
 
